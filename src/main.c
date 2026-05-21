@@ -9,6 +9,8 @@
 #include <zlib.h>
 #include <openssl/sha.h>
 #include <dirent.h>
+#include <getopt.h>
+#include <unistd.h>
 
 /* ---- zlib helpers ---- */
 
@@ -152,6 +154,35 @@ static char *hash_blob_file(const char *file_path) {
     char *buf = file_read(file_path, &size);
     char *hex = hash_and_write("blob", buf, size);
     free(buf);
+    return hex;
+}
+
+/* --- commit --- */
+static char *hash_commit(char *tree_hash, char *parent_hash, char *message) {
+    int content_len = 0;
+    content_len += strlen("tree ") + strlen(tree_hash) + 1;
+    if (parent_hash != NULL) {
+        content_len += strlen("parent ") + strlen(parent_hash) + 1;
+    }
+    content_len += strlen("author John Doe <john@example.com> 1234567890 +0000") + 1;
+    content_len += strlen("committer John Doe <john@example.com> 1234567890 +0000") + 1;
+    content_len++;
+    if (message != NULL) {
+        content_len += strlen(message) + 1;
+    }
+    char *content = malloc(content_len);
+    int len = 0;
+    len += sprintf(content + len, "tree %s\n", tree_hash);
+    if (parent_hash) {
+        len += sprintf(content + len, "parent %s\n", parent_hash);
+    }
+    len += sprintf(content + len, "author John Doe <john@example.com> 1234567890 +0000\n");
+    len += sprintf(content + len, "committer John Doe <john@example.com> 1234567890 +0000\n\n");
+    if (message != NULL) {
+        len += sprintf(content + len, "%s\n", message);
+    }
+    char *hex = hash_and_write("commit", content, content_len);
+    free(content);
     return hex;
 }
 
@@ -319,6 +350,12 @@ static void cmd_ls_tree(const char *hex) {
     free(dec);
 }
 
+static void cmd_commit_tree(char *hash, char *parent, char *message) {
+    char *hex = hash_commit(hash, parent, message);
+    printf("%s", hex);
+    free(hex);
+}
+
 static void cmd_write_tree(void) {
     char *hex = hash_tree(".");
     printf("%s", hex);
@@ -348,6 +385,22 @@ int main(int argc, char *argv[]) {
         cmd_ls_tree(argv[3]);
     } else if (strcmp(cmd, "write-tree") == 0) {
         cmd_write_tree();
+    } else if (strcmp(cmd, "commit-tree") == 0) {
+        char *tree_hash = argv[2];
+        int opt;
+        char *parent = NULL;
+        char *message = NULL;
+        while ((opt = getopt(argc, argv, "p:m:")) != -1) {
+            switch (opt) {
+                case 'p':
+                    parent = optarg;
+                    break;
+                case 'm':
+                    message = optarg;
+                    break;
+            }
+        }
+        cmd_commit_tree(tree_hash, parent, message);
     } else {
         fprintf(stderr, "Unknown command %s\n", cmd);
         return 1;
