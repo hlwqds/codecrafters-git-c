@@ -39,14 +39,27 @@ char *compress_zlib(char *in, size_t in_len, size_t *out_len) {
     return out;
 }
 
-static void parse_blob(char *blob, size_t len) {
+static void parse_object(char *object, size_t len) {
     size_t decom_len = 0;
-    blob = decompress_zlib(blob, len, &decom_len);
-    int content_len = atoi(blob + 5);
-    int header_len = strlen(blob);
-    char *content = blob + header_len + 1;
-    printf("%.*s", content_len, content);
-    free(blob);
+    object = decompress_zlib(object, len, &decom_len);
+    if (memcmp(object, "blob", strlen("blob")) == 0) {
+        int content_len = atoi(object + 5);
+        int header_len = strlen(object);
+        char *content = object + header_len + 1;
+        printf("%.*s", content_len, content);
+    } else if (memcmp(object, "tree", strlen("tree")) == 0) {
+        int content_len = atoi(object + 5);
+        int header_len = strlen(object);
+        char *entry = object + header_len + 1;
+        char *content_end = entry + content_len;
+        while (entry < content_end) {
+            char *name = strchr(entry, ' ') + 1;
+            printf("%s\n", name);
+            entry = strchr(entry, '\0') + 21;
+        }
+    }
+
+    free(object);
 }
 
 static char *file_read(char *file_name, size_t *out_len) {
@@ -116,7 +129,7 @@ int main(int argc, char *argv[]) {
             sprintf(path, ".git/objects/%.*s/%s", 2, hash, hash + 2);
             size_t size = 0;
             char *buf = file_read(path, &size);
-            parse_blob(buf, size);
+            parse_object(buf, size);
             free(buf);
         }
     } else if (strcmp(command, "hash-object") == 0) {
@@ -149,6 +162,19 @@ int main(int argc, char *argv[]) {
             sprintf(blob_name, "%s/%s", dir, hex + 2);
             file_write(blob_name, comp_content, com_len);
         }
+    } else if (strcmp(command, "ls-tree") == 0) {
+        const char *flag = argv[2];
+        const char *hash = argv[3];
+        if (strlen(hash) != 40) {
+            fprintf(stderr, "invalid hash len\n");
+            return 1;
+        }
+        char path[PATH_MAX] = {0};
+        sprintf(path, ".git/objects/%.*s/%s", 2, hash, hash + 2);
+        size_t size = 0;
+        char *buf = file_read(path, &size);
+        parse_object(buf, size);
+        free(buf);       
     } else {
         fprintf(stderr, "Unknown command %s\n", command);
         return 1;
